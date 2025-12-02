@@ -222,6 +222,31 @@ When running in parallel:
 envir deploy --on=web1
 ```
 
+## Logging
+
+Enable file logging in Envirfile.yaml:
+
+```yaml
+log:
+  enabled: true
+  path: ./envir.log  # default: envir.log
+```
+
+When enabled, all output is saved to the log file with timestamps.
+
+## Verbose Mode
+
+Use `-v` flag for detailed output:
+
+```bash
+envir deploy -v
+```
+
+Shows:
+- SHA256 checksums for uploads
+- Elapsed time for each step
+- Total execution time
+
 ## License
 
 MIT

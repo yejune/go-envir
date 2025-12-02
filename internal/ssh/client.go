@@ -1,6 +1,9 @@
 package ssh
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -12,9 +15,10 @@ import (
 )
 
 type Client struct {
-	conn   *ssh.Client
-	host   string
-	config *ssh.ClientConfig
+	conn    *ssh.Client
+	host    string
+	config  *ssh.ClientConfig
+	verbose bool
 }
 
 func NewClient(host, user, keyPath string, port int) (*Client, error) {
@@ -55,6 +59,10 @@ func NewClient(host, user, keyPath string, port int) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) SetVerbose(v bool) {
+	c.verbose = v
+}
+
 func (c *Client) Close() error {
 	if c.conn != nil {
 		return c.conn.Close()
@@ -76,13 +84,7 @@ func (c *Client) Run(command string, stdout, stderr io.Writer) error {
 }
 
 func (c *Client) Upload(localPath, remotePath string) error {
-	session, err := c.conn.NewSession()
-	if err != nil {
-		return fmt.Errorf("failed to create session: %w", err)
-	}
-	defer session.Close()
-
-	// 로컬 파일 읽기
+	// 1. 로컬 파일 읽기 및 체크섬 계산
 	localFile, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %w", err)
@@ -94,16 +96,115 @@ func (c *Client) Upload(localPath, remotePath string) error {
 		return fmt.Errorf("failed to stat local file: %w", err)
 	}
 
-	// SCP 프로토콜로 전송
-	go func() {
-		w, _ := session.StdinPipe()
-		defer w.Close()
-		fmt.Fprintf(w, "C0644 %d %s\n", stat.Size(), filepath.Base(remotePath))
-		io.Copy(w, localFile)
-		fmt.Fprint(w, "\x00")
-	}()
+	// 파일 내용 읽어서 체크섬 계산
+	fileContent, err := io.ReadAll(localFile)
+	if err != nil {
+		return fmt.Errorf("failed to read local file: %w", err)
+	}
 
-	return session.Run(fmt.Sprintf("/usr/bin/scp -t %s", remotePath))
+	localHash := sha256.Sum256(fileContent)
+	localHashStr := hex.EncodeToString(localHash[:])
+
+	if c.verbose {
+		fmt.Printf("      Local file: %s (%d bytes)\n", localPath, stat.Size())
+		fmt.Printf("      Local SHA256: %s\n", localHashStr)
+	}
+
+	// 2. SCP로 파일 전송
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+	defer session.Close()
+
+	// stdin/stdout/stderr 파이프
+	stdinPipe, err := session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdin pipe: %w", err)
+	}
+
+	var scpStdout, scpStderr bytes.Buffer
+	session.Stdout = &scpStdout
+	session.Stderr = &scpStderr
+
+	// SCP 명령 시작
+	if err := session.Start(fmt.Sprintf("/usr/bin/scp -t %s", remotePath)); err != nil {
+		return fmt.Errorf("failed to start scp: %w", err)
+	}
+
+	// SCP 프로토콜: 파일 헤더 전송
+	header := fmt.Sprintf("C0644 %d %s\n", stat.Size(), filepath.Base(remotePath))
+	if _, err := stdinPipe.Write([]byte(header)); err != nil {
+		return fmt.Errorf("failed to write scp header: %w", err)
+	}
+
+	// 파일 내용 전송
+	if _, err := stdinPipe.Write(fileContent); err != nil {
+		return fmt.Errorf("failed to write file content: %w", err)
+	}
+
+	// 종료 바이트
+	if _, err := stdinPipe.Write([]byte{0}); err != nil {
+		return fmt.Errorf("failed to write terminator: %w", err)
+	}
+
+	stdinPipe.Close()
+
+	// SCP 완료 대기
+	if err := session.Wait(); err != nil {
+		return fmt.Errorf("scp failed: %w (stderr: %s)", err, scpStderr.String())
+	}
+
+	if c.verbose {
+		fmt.Printf("      SCP transfer completed\n")
+	}
+
+	// 3. 원격 파일 체크섬 검증
+	remoteHashStr, err := c.getRemoteChecksum(remotePath)
+	if err != nil {
+		return fmt.Errorf("failed to verify remote checksum: %w", err)
+	}
+
+	if c.verbose {
+		fmt.Printf("      Remote SHA256: %s\n", remoteHashStr)
+	}
+
+	if localHashStr != remoteHashStr {
+		return fmt.Errorf("checksum mismatch: local=%s, remote=%s", localHashStr, remoteHashStr)
+	}
+
+	if c.verbose {
+		fmt.Printf("      ✓ Checksum verified\n")
+	}
+
+	return nil
+}
+
+func (c *Client) getRemoteChecksum(remotePath string) (string, error) {
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	var stdout, stderr bytes.Buffer
+	session.Stdout = &stdout
+	session.Stderr = &stderr
+
+	// sha256sum 또는 shasum 시도
+	cmd := fmt.Sprintf("sha256sum %s 2>/dev/null || shasum -a 256 %s 2>/dev/null", remotePath, remotePath)
+	if err := session.Run(cmd); err != nil {
+		return "", fmt.Errorf("checksum command failed: %w (stderr: %s)", err, stderr.String())
+	}
+
+	// 출력에서 해시 추출 (첫 번째 필드)
+	output := strings.TrimSpace(stdout.String())
+	parts := strings.Fields(output)
+	if len(parts) < 1 {
+		return "", fmt.Errorf("unexpected checksum output: %s", output)
+	}
+
+	return parts[0], nil
 }
 
 func expandPath(path string) string {

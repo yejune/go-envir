@@ -222,6 +222,31 @@ tasks:
 envir deploy --on=web1
 ```
 
+## 로깅
+
+Envirfile.yaml에서 파일 로깅 활성화:
+
+```yaml
+log:
+  enabled: true
+  path: ./envir.log  # 기본값: envir.log
+```
+
+활성화하면 모든 출력이 타임스탬프와 함께 로그 파일에 저장됩니다.
+
+## 상세 모드
+
+`-v` 플래그로 상세 출력:
+
+```bash
+envir deploy -v
+```
+
+표시 내용:
+- 업로드 파일의 SHA256 체크섬
+- 각 단계별 소요 시간
+- 총 실행 시간
+
 ## 라이선스
 
 MIT

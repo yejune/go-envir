@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yejune/go-envir/internal/config"
 	"github.com/yejune/go-envir/internal/ssh"
@@ -19,20 +20,62 @@ type Runner struct {
 	mu      sync.Mutex
 	stdout  io.Writer
 	stderr  io.Writer
+	verbose bool
+	logFile *os.File
 }
 
 func New(cfg *config.EnvirConfig) *Runner {
-	return &Runner{
+	r := &Runner{
 		config:  cfg,
 		clients: make(map[string]*ssh.Client),
 		stdout:  os.Stdout,
 		stderr:  os.Stderr,
+	}
+
+	// 로그 파일 설정
+	if cfg.Log.Enabled {
+		logPath := cfg.Log.Path
+		if logPath == "" {
+			logPath = "envir.log"
+		}
+		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			r.logFile = f
+		}
+	}
+
+	return r
+}
+
+func (r *Runner) SetVerbose(v bool) {
+	r.verbose = v
+	// verbose 모드면 SSH 클라이언트에도 전달
+	for _, client := range r.clients {
+		client.SetVerbose(v)
 	}
 }
 
 func (r *Runner) Close() {
 	for _, client := range r.clients {
 		client.Close()
+	}
+	if r.logFile != nil {
+		r.logFile.Close()
+	}
+}
+
+func (r *Runner) log(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+
+	// 콘솔 출력
+	fmt.Print(msg)
+
+	// 파일 로그
+	if r.logFile != nil {
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		// 이모지 제거하고 로그
+		cleanMsg := strings.TrimSpace(msg)
+		r.logFile.WriteString(fmt.Sprintf("[%s] %s\n", timestamp, cleanMsg))
 	}
 }
 
@@ -59,19 +102,29 @@ func (r *Runner) Run(taskName string, serverFilter string) error {
 	// 배열 host를 가진 서버는 자동 확장
 	servers = r.config.GetExpandedServers(servers)
 
-	fmt.Printf("🚀 Running task: %s", taskName)
+	r.log("🚀 Running task: %s", taskName)
 	if task.Parallel && len(servers) > 1 {
-		fmt.Printf(" (parallel)")
+		r.log(" (parallel)")
 	}
-	fmt.Println()
+	r.log("\n")
 
+	startTime := time.Now()
+
+	var err error
 	// 병렬 실행
 	if task.Parallel && len(servers) > 1 {
-		return r.runParallel(task, servers)
+		err = r.runParallel(task, servers)
+	} else {
+		// 순차 실행
+		err = r.runSequential(task, servers)
 	}
 
-	// 순차 실행
-	return r.runSequential(task, servers)
+	elapsed := time.Since(startTime)
+	if r.verbose {
+		r.log("   ⏱ Elapsed: %s\n", elapsed.Round(time.Millisecond))
+	}
+
+	return err
 }
 
 func (r *Runner) runSequential(task config.Task, servers []string) error {
@@ -82,16 +135,17 @@ func (r *Runner) runSequential(task config.Task, servers []string) error {
 		}
 
 		host := getHost(server)
-		fmt.Printf("\n📡 [%s] %s\n", serverName, host)
+		r.log("\n📡 [%s] %s\n", serverName, host)
 
 		for _, script := range task.Scripts {
 			if err := r.runScript(serverName, server, script, r.stdout, r.stderr); err != nil {
+				r.log("   ❌ Error: %v\n", err)
 				return fmt.Errorf("[%s] script failed: %w", serverName, err)
 			}
 		}
 	}
 
-	fmt.Printf("\n✅ Task completed\n")
+	r.log("\n✅ Task completed\n")
 	return nil
 }
 
@@ -139,7 +193,7 @@ func (r *Runner) runParallel(task config.Task, servers []string) error {
 	// 결과 출력 (순서대로)
 	for _, serverName := range servers {
 		if buf, ok := results[serverName]; ok {
-			fmt.Print(buf.String())
+			r.log("%s", buf.String())
 		}
 	}
 
@@ -150,19 +204,23 @@ func (r *Runner) runParallel(task config.Task, servers []string) error {
 	}
 
 	if len(errs) > 0 {
-		fmt.Printf("\n❌ %d server(s) failed\n", len(errs))
+		r.log("\n❌ %d server(s) failed\n", len(errs))
 		return errs[0]
 	}
 
-	fmt.Printf("\n✅ All %d servers completed\n", len(servers))
+	r.log("\n✅ All %d servers completed\n", len(servers))
 	return nil
 }
 
 func (r *Runner) runScript(serverName string, server config.Server, script config.Script, stdout, stderr io.Writer) error {
+	startTime := time.Now()
+
 	// 로컬 실행
 	if script.Local != "" {
-		fmt.Fprintf(stdout, "   ⚡ Local: %s\n", truncate(script.Local, 60))
-		return r.runLocal(script.Local, stdout, stderr)
+		r.logScript(stdout, "⚡ Local", script.Local)
+		err := r.runLocal(script.Local, stdout, stderr)
+		r.logElapsed(stdout, startTime)
+		return err
 	}
 
 	// 업로드
@@ -171,25 +229,45 @@ func (r *Runner) runScript(serverName string, server config.Server, script confi
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid upload format: %s (expected 'local:remote')", script.Upload)
 		}
-		fmt.Fprintf(stdout, "   📤 Upload: %s → %s\n", parts[0], parts[1])
+		r.logScript(stdout, "📤 Upload", fmt.Sprintf("%s → %s", parts[0], parts[1]))
 		client, err := r.getClient(serverName, server)
 		if err != nil {
 			return err
 		}
-		return client.Upload(parts[0], parts[1])
+		err = client.Upload(parts[0], parts[1])
+		r.logElapsed(stdout, startTime)
+		return err
 	}
 
 	// 원격 실행
 	if script.Run != "" {
-		fmt.Fprintf(stdout, "   ▶ Run: %s\n", truncate(script.Run, 60))
+		r.logScript(stdout, "▶ Run", script.Run)
 		client, err := r.getClient(serverName, server)
 		if err != nil {
 			return err
 		}
-		return client.Run(script.Run, stdout, stderr)
+		err = client.Run(script.Run, stdout, stderr)
+		r.logElapsed(stdout, startTime)
+		return err
 	}
 
 	return nil
+}
+
+func (r *Runner) logScript(w io.Writer, prefix, cmd string) {
+	msg := fmt.Sprintf("   %s: %s\n", prefix, truncate(cmd, 60))
+	fmt.Fprint(w, msg)
+	if r.logFile != nil {
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		r.logFile.WriteString(fmt.Sprintf("[%s] %s: %s\n", timestamp, prefix, cmd))
+	}
+}
+
+func (r *Runner) logElapsed(w io.Writer, startTime time.Time) {
+	if r.verbose {
+		elapsed := time.Since(startTime)
+		fmt.Fprintf(w, "      ⏱ %s\n", elapsed.Round(time.Millisecond))
+	}
 }
 
 func (r *Runner) runLocal(command string, stdout, stderr io.Writer) error {
@@ -217,6 +295,7 @@ func (r *Runner) getClient(serverName string, server config.Server) (*ssh.Client
 		return nil, err
 	}
 
+	client.SetVerbose(r.verbose)
 	r.clients[serverName] = client
 	return client, nil
 }

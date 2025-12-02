@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/yejune/go-envir/internal/config"
 	"github.com/yejune/go-envir/internal/runner"
@@ -23,9 +24,9 @@ func Execute(args []string) error {
 	switch command {
 	case "run":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: envir run <task> [--on=server]")
+			return fmt.Errorf("usage: envir run <task> [--on=server] [-v]")
 		}
-		return runTask(args[1], parseServer(args))
+		return runTask(args[1], parseServer(args), parseVerbose(args))
 
 	case "init":
 		return initConfig()
@@ -39,11 +40,11 @@ func Execute(args []string) error {
 
 	default:
 		// 기본: task 이름으로 간주
-		return runTask(command, parseServer(args))
+		return runTask(command, parseServer(args), parseVerbose(args))
 	}
 }
 
-func runTask(taskName string, serverFilter string) error {
+func runTask(taskName string, serverFilter string, verbose bool) error {
 	cfg, err := config.Load("Envirfile.yaml")
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -51,6 +52,10 @@ func runTask(taskName string, serverFilter string) error {
 
 	r := runner.New(cfg)
 	defer r.Close()
+
+	if verbose {
+		r.SetVerbose(true)
+	}
 
 	return r.Run(taskName, serverFilter)
 }
@@ -84,6 +89,11 @@ servers:
     user: ubuntu
     key: ~/.ssh/id_rsa
     # port: 22
+
+# 로그 설정 (선택)
+log:
+  enabled: true
+  path: ./envir.log
 
 tasks:
   deploy:
@@ -140,18 +150,33 @@ func parseServer(args []string) string {
 	return ""
 }
 
+func parseVerbose(args []string) bool {
+	for _, arg := range args {
+		if arg == "-v" || arg == "--verbose" || strings.HasPrefix(arg, "-v") {
+			return true
+		}
+	}
+	return false
+}
+
 func printUsage() {
 	fmt.Println(`Go Envir - SSH deployment tool
 
 Usage:
   envir <task>              Run a task
+  envir <task> -v           Run with verbose output
   envir run <task>          Run a task (explicit)
   envir run <task> --on=X   Run on specific server
   envir list                List available tasks
   envir init                Create example Envirfile.yaml
 
+Options:
+  -v, --verbose             Show detailed output (timing, checksums, etc.)
+  --on=<server>             Run on specific server only
+
 Examples:
   envir deploy              Deploy to production
+  envir deploy -v           Deploy with verbose output
   envir logs                View logs
   envir status              Check service status
   envir rollback            Rollback to previous version`)

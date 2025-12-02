@@ -11,6 +11,12 @@ import (
 type EnvirConfig struct {
 	Servers map[string]Server `yaml:"servers"`
 	Tasks   map[string]Task   `yaml:"tasks"`
+	Log     LogConfig         `yaml:"log"`
+}
+
+type LogConfig struct {
+	Enabled bool   `yaml:"enabled"` // Enable logging to file
+	Path    string `yaml:"path"`    // Log file path (default: ./envir.log)
 }
 
 // Server can have single host or multiple hosts
