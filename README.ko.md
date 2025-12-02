@@ -1,14 +1,14 @@
 # Go Envir
 
-SSH deployment tool inspired by PHP Envoy
+PHP Envoy 스타일의 Go SSH 배포 도구
 
-## Installation
+## 설치
 
 ```bash
 go install github.com/yejune/go-envir@latest
 ```
 
-Or build from source:
+또는 소스에서 빌드:
 
 ```bash
 git clone https://github.com/yejune/go-envir.git
@@ -16,64 +16,64 @@ cd go-envir
 go install .
 ```
 
-## Quick Start
+## 빠른 시작
 
 ```bash
-# 1. Initialize in your project folder
+# 1. 프로젝트 폴더에서 초기화
 envir init
 
-# 2. Edit Envirfile.yaml (server info, task settings)
+# 2. Envirfile.yaml 수정 (서버 정보, 태스크 설정)
 
-# 3. Run deployment
+# 3. 배포 실행
 envir deploy
 ```
 
-## Commands
+## 명령어
 
-| Command | Description |
-|---------|-------------|
-| `envir` | Show available tasks (if Envirfile.yaml exists) |
-| `envir init` | Create Envirfile.yaml template |
-| `envir list` | List available tasks |
-| `envir <task>` | Run a task |
-| `envir <task> --on=<server>` | Run on specific server only |
-| `envir help` | Show help |
+| 명령어 | 설명 |
+|-------|------|
+| `envir` | 사용 가능한 태스크 목록 표시 (Envirfile.yaml 있을 때) |
+| `envir init` | Envirfile.yaml 템플릿 생성 |
+| `envir list` | 사용 가능한 태스크 목록 |
+| `envir <task>` | 태스크 실행 |
+| `envir <task> --on=<server>` | 특정 서버에서만 실행 |
+| `envir help` | 도움말 |
 
-## Envirfile.yaml Structure
+## Envirfile.yaml 구조
 
 ```yaml
-# Server definitions
+# 서버 정의
 servers:
   production:
     host: example.com
     user: ubuntu
-    key: ~/.ssh/id_rsa    # default: ~/.ssh/id_rsa
-    port: 22              # default: 22
+    key: ~/.ssh/id_rsa    # 기본값: ~/.ssh/id_rsa
+    port: 22              # 기본값: 22
 
   staging:
     host: staging.example.com
     user: deploy
 
-# Task definitions
+# 태스크 정의
 tasks:
   deploy:
-    description: "Deploy to production"
-    on: [production]      # servers to run on (defaults to first server)
+    description: "프로덕션 배포"
+    on: [production]      # 실행할 서버 (생략 시 첫 번째 서버)
     scripts:
-      - local: echo "Building locally"
+      - local: echo "로컬에서 빌드"
       - upload: ./app:/remote/path/app
       - run: sudo systemctl restart myapp
 
   logs:
-    description: "View logs"
+    description: "로그 확인"
     on: [production]
     scripts:
       - run: sudo journalctl -u myapp -f
 ```
 
-## Script Types
+## 스크립트 타입
 
-### local - Run command locally
+### local - 로컬 명령 실행
 
 ```yaml
 scripts:
@@ -81,7 +81,7 @@ scripts:
   - local: npm run build
 ```
 
-### upload - Upload file (SCP)
+### upload - 파일 업로드 (SCP)
 
 ```yaml
 scripts:
@@ -89,7 +89,7 @@ scripts:
   - upload: ./dist:/var/www/html
 ```
 
-### run - Run command on remote server
+### run - 원격 명령 실행
 
 ```yaml
 scripts:
@@ -100,7 +100,7 @@ scripts:
       sudo systemctl restart myapp
 ```
 
-## Example: Go Web Server Deployment
+## 예제: Go 웹 서버 배포
 
 ```yaml
 servers:
@@ -111,16 +111,16 @@ servers:
 
 tasks:
   deploy:
-    description: "Deploy to production"
+    description: "프로덕션 배포"
     on: [production]
     scripts:
-      # 1. Build for Linux locally
+      # 1. 로컬에서 Linux용 빌드
       - local: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o server-linux .
 
-      # 2. Upload to server
+      # 2. 서버로 업로드
       - upload: server-linux:/app/server-new
 
-      # 3. Replace and restart on server
+      # 3. 서버에서 교체 및 재시작
       - run: |
           cd /app
           mv server server-old 2>/dev/null || true
@@ -128,23 +128,23 @@ tasks:
           chmod +x server
           sudo systemctl restart myapp
 
-      # 4. Clean up local build file
+      # 4. 로컬 빌드 파일 삭제
       - local: rm -f server-linux
 
   status:
-    description: "Check service status"
+    description: "서비스 상태 확인"
     on: [production]
     scripts:
       - run: sudo systemctl status myapp --no-pager
 
   logs:
-    description: "Real-time logs"
+    description: "실시간 로그"
     on: [production]
     scripts:
       - run: sudo journalctl -u myapp -f
 
   rollback:
-    description: "Rollback to previous version"
+    description: "이전 버전으로 롤백"
     on: [production]
     scripts:
       - run: |
@@ -154,9 +154,9 @@ tasks:
           sudo systemctl restart myapp
 ```
 
-## Environment Variables
+## 환경 변수
 
-Environment variables can be used in Envirfile.yaml:
+Envirfile.yaml에서 환경 변수 사용 가능:
 
 ```yaml
 servers:
@@ -166,42 +166,42 @@ servers:
     key: $SSH_KEY_PATH
 ```
 
-## Multi-Server Deployment
+## 여러 서버에 배포
 
-### Sequential Execution (default)
+### 순차 실행 (기본)
 
 ```yaml
 tasks:
   deploy:
-    on: [web1, web2]  # runs sequentially
+    on: [web1, web2]  # 순차적으로 실행
     scripts:
       - upload: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 
-### Parallel Execution
+### 병렬 실행
 
 ```yaml
 tasks:
   deploy:
     on: [web1, web2, web3]
-    parallel: true  # run on all servers simultaneously
+    parallel: true  # 모든 서버에 동시 실행
     scripts:
       - upload: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 
-When running in parallel:
-- Deploys to all servers simultaneously
-- Output from each server is buffered and displayed in order
-- Returns error if any server fails
+병렬 실행 시:
+- 모든 서버에 동시에 배포
+- 각 서버의 출력은 버퍼링 후 순서대로 표시
+- 하나라도 실패하면 에러 반환
 
-### Specify Specific Server
+### 특정 서버만 지정
 
 ```bash
 envir deploy --on=web1
 ```
 
-## License
+## 라이선스
 
 MIT
