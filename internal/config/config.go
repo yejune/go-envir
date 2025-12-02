@@ -37,11 +37,11 @@ type Task struct {
 }
 
 type Script struct {
-	Local     string `yaml:"local"`      // Local command
-	Run       string `yaml:"run"`        // Remote command
-	Upload    string `yaml:"upload"`     // Upload file (local:remote)
-	UploadDir string `yaml:"upload_dir"` // Upload directory, changed files only (local:remote)
-	UploadTar string `yaml:"upload_tar"` // Upload directory as tar.gz (local:remote)
+	Local string `yaml:"local"` // Local command
+	Run   string `yaml:"run"`   // Remote command
+	Sync  string `yaml:"sync"`  // Sync upload (changed files only, checksum comparison)
+	Tar   string `yaml:"tar"`   // Tar upload (compress, upload, extract - atomic)
+	Scp   string `yaml:"scp"`   // SCP upload (direct transfer, no checksum)
 }
 
 func Load(path string) (*EnvirConfig, error) {

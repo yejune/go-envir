@@ -37,6 +37,7 @@ envir deploy
 | `envir list` | 사용 가능한 태스크 목록 |
 | `envir <task>` | 태스크 실행 |
 | `envir <task> --on=<server>` | 특정 서버에서만 실행 |
+| `envir <task> -v` | 상세 출력으로 실행 |
 | `envir help` | 도움말 |
 
 ## Envirfile.yaml 구조
@@ -61,7 +62,7 @@ tasks:
     on: [production]      # 실행할 서버 (생략 시 첫 번째 서버)
     scripts:
       - local: echo "로컬에서 빌드"
-      - upload: ./app:/remote/path/app
+      - sync: ./app:/remote/path/app
       - run: sudo systemctl restart myapp
 
   logs:
@@ -77,58 +78,74 @@ tasks:
 
 ```yaml
 scripts:
-  - local: GOOS=linux GOARCH=amd64 go build -o server .
   - local: npm run build
 ```
 
-### upload - 파일 업로드 (SCP)
+### sync - 체크섬 비교 업로드 (변경분만)
 
 ```yaml
 scripts:
-  - upload: ./server:/app/server-new
+  - sync: ./server:/app/server
+  - sync: ./dist:/var/www/html
 ```
 
-SHA256 체크섬 검증 포함.
-
-### upload_dir - 디렉토리 업로드 (rsync 스타일)
-
-```yaml
-scripts:
-  - upload_dir: ./dist:/var/www/html
-```
-
-- 업로드 전 체크섬 비교
+특징:
+- 업로드 전 SHA256 체크섬 비교
 - 변경된 파일만 업로드
-- 기존 파일 유지
+- 업로드 후 무결성 검증
 
-### upload_tar - tar.gz로 디렉토리 업로드
+### tar - tar.gz 압축 업로드 (원자적)
 
 ```yaml
 scripts:
-  - upload_tar: ./dist:/var/www/html
+  - tar: ./server:/app/server
+  - tar: ./dist:/var/www/html
 ```
 
+특징:
 - 메모리에서 tar.gz 생성
-- 원격에서 압축 해제
-- 전체 디렉토리 교체 (파일이 많을 때 빠름)
+- 원격 서버에서 압축 해제
+- 원자적: 전부 아니면 전무 (부분 업로드 없음)
+- 프로덕션 배포에 적합
+
+### scp - 직접 업로드 (체크섬 없음)
+
+```yaml
+scripts:
+  - scp: ./server:/app/server
+  - scp: ./dist:/var/www/html
+```
+
+특징:
+- 가장 빠른 방식 (체크섬 비교 없음)
+- 모든 파일 무조건 업로드
+- 빠른 개발 배포에 적합
 
 ### run - 원격 명령 실행
 
 ```yaml
 scripts:
-  - run: sudo systemctl restart myapp
+  - run: echo "서버에서 실행"
   - run: |
       cd /app
-      ./migrate.sh
+      ./server restart
       sudo systemctl restart myapp
 ```
+
+## 업로드 방식 비교
+
+| 방식 | 체크섬 | 원자적 | 속도 | 용도 |
+|------|--------|--------|------|------|
+| `sync` | ✓ (전후) | ✗ | 중간 | 점진적 배포 |
+| `tar` | ✓ (tar 내용) | ✓ | 중간 | 프로덕션 배포 |
+| `scp` | ✗ | ✗ | 빠름 | 개발 배포 |
 
 ## 예제: Go 웹 서버 배포
 
 ```yaml
 servers:
   production:
-    host: myserver.com
+    host: example.com
     user: ubuntu
     key: ~/.ssh/id_rsa
 
@@ -140,8 +157,8 @@ tasks:
       # 1. 로컬에서 Linux용 빌드
       - local: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o server-linux .
 
-      # 2. 서버로 업로드
-      - upload: server-linux:/app/server-new
+      # 2. tar로 업로드 (원자적)
+      - tar: server-linux:/app/server-new
 
       # 3. 서버에서 교체 및 재시작
       - run: |
@@ -207,7 +224,7 @@ tasks:
     on: [web]  # 자동으로 web[0], web[1], web[2]로 확장
     parallel: true
     scripts:
-      - upload: ./app:/app/server-new
+      - tar: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 
@@ -218,7 +235,7 @@ tasks:
   deploy:
     on: [web1, web2]  # 순차적으로 실행
     scripts:
-      - upload: ./app:/app/server-new
+      - tar: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 
@@ -230,7 +247,7 @@ tasks:
     on: [web1, web2, web3]
     parallel: true  # 모든 서버에 동시 실행
     scripts:
-      - upload: ./app:/app/server-new
+      - tar: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 

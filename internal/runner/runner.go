@@ -223,55 +223,58 @@ func (r *Runner) runScript(serverName string, server config.Server, script confi
 		return err
 	}
 
-	// 파일 업로드
-	if script.Upload != "" {
-		parts := strings.SplitN(script.Upload, ":", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid upload format: %s (expected 'local:remote')", script.Upload)
+	// sync: 변경분만 업로드 (체크섬 비교)
+	if script.Sync != "" {
+		localPath, remotePath, err := parseUploadPath(script.Sync)
+		if err != nil {
+			return err
 		}
-		r.logScript(stdout, "📤 Upload", fmt.Sprintf("%s → %s", parts[0], parts[1]))
 		client, err := r.getClient(serverName, server)
 		if err != nil {
 			return err
 		}
-		err = client.Upload(parts[0], parts[1])
-		r.logElapsed(stdout, startTime)
-		return err
-	}
-
-	// 디렉토리 업로드 (변경분만, rsync 스타일)
-	if script.UploadDir != "" {
-		parts := strings.SplitN(script.UploadDir, ":", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid upload_dir format: %s (expected 'local:remote')", script.UploadDir)
-		}
-		r.logScript(stdout, "📁 Sync", fmt.Sprintf("%s → %s", parts[0], parts[1]))
-		client, err := r.getClient(serverName, server)
-		if err != nil {
-			return err
-		}
-		uploaded, err := client.UploadDir(parts[0], parts[1])
-		if err == nil {
+		r.logScript(stdout, "📁 Sync", fmt.Sprintf("%s → %s", localPath, remotePath))
+		uploaded, uploadErr := client.UploadSync(localPath, remotePath)
+		if uploadErr == nil {
 			fmt.Fprintf(stdout, "      %d file(s) uploaded\n", uploaded)
 		}
 		r.logElapsed(stdout, startTime)
-		return err
+		return uploadErr
 	}
 
-	// 디렉토리 tar 업로드 (압축해서 전체 교체)
-	if script.UploadTar != "" {
-		parts := strings.SplitN(script.UploadTar, ":", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid upload_tar format: %s (expected 'local:remote')", script.UploadTar)
+	// tar: 압축 후 원자적 업로드
+	if script.Tar != "" {
+		localPath, remotePath, err := parseUploadPath(script.Tar)
+		if err != nil {
+			return err
 		}
-		r.logScript(stdout, "📦 Tar", fmt.Sprintf("%s → %s", parts[0], parts[1]))
 		client, err := r.getClient(serverName, server)
 		if err != nil {
 			return err
 		}
-		err = client.UploadDirTar(parts[0], parts[1])
+		r.logScript(stdout, "📦 Tar", fmt.Sprintf("%s → %s", localPath, remotePath))
+		err = client.UploadTar(localPath, remotePath)
 		r.logElapsed(stdout, startTime)
 		return err
+	}
+
+	// scp: 직접 전송 (체크섬 비교 없음)
+	if script.Scp != "" {
+		localPath, remotePath, err := parseUploadPath(script.Scp)
+		if err != nil {
+			return err
+		}
+		client, err := r.getClient(serverName, server)
+		if err != nil {
+			return err
+		}
+		r.logScript(stdout, "📤 SCP", fmt.Sprintf("%s → %s", localPath, remotePath))
+		uploaded, uploadErr := client.UploadSCP(localPath, remotePath)
+		if uploadErr == nil {
+			fmt.Fprintf(stdout, "      %d file(s) uploaded\n", uploaded)
+		}
+		r.logElapsed(stdout, startTime)
+		return uploadErr
 	}
 
 	// 원격 실행
@@ -333,6 +336,14 @@ func (r *Runner) getClient(serverName string, server config.Server) (*ssh.Client
 	client.SetVerbose(r.verbose)
 	r.clients[serverName] = client
 	return client, nil
+}
+
+func parseUploadPath(path string) (local, remote string, err error) {
+	parts := strings.SplitN(path, ":", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid path format: %s (expected 'local:remote')", path)
+	}
+	return parts[0], parts[1], nil
 }
 
 func truncate(s string, max int) string {

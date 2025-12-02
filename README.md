@@ -37,6 +37,7 @@ envir deploy
 | `envir list` | List available tasks |
 | `envir <task>` | Run a task |
 | `envir <task> --on=<server>` | Run on specific server only |
+| `envir <task> -v` | Run with verbose output |
 | `envir help` | Show help |
 
 ## Envirfile.yaml Structure
@@ -61,7 +62,7 @@ tasks:
     on: [production]      # servers to run on (defaults to first server)
     scripts:
       - local: echo "Building locally"
-      - upload: ./app:/remote/path/app
+      - sync: ./app:/remote/path/app
       - run: sudo systemctl restart myapp
 
   logs:
@@ -77,58 +78,74 @@ tasks:
 
 ```yaml
 scripts:
-  - local: GOOS=linux GOARCH=amd64 go build -o server .
   - local: npm run build
 ```
 
-### upload - Upload file (SCP)
+### sync - Upload with checksum comparison (changed files only)
 
 ```yaml
 scripts:
-  - upload: ./server:/app/server-new
+  - sync: ./server:/app/server
+  - sync: ./dist:/var/www/html
 ```
 
-Single file upload with SHA256 checksum verification.
-
-### upload_dir - Upload directory (rsync-style)
-
-```yaml
-scripts:
-  - upload_dir: ./dist:/var/www/html
-```
-
-- Compares checksums before upload
+Features:
+- Compares SHA256 checksums before upload
 - Only uploads changed files
-- Keeps existing unchanged files
+- Verifies integrity after upload
 
-### upload_tar - Upload directory as tar.gz
+### tar - Upload as tar.gz (atomic)
 
 ```yaml
 scripts:
-  - upload_tar: ./dist:/var/www/html
+  - tar: ./server:/app/server
+  - tar: ./dist:/var/www/html
 ```
 
+Features:
 - Creates tar.gz in memory
-- Uploads and extracts on remote
-- Replaces entire directory (faster for many files)
+- Uploads and extracts on remote server
+- Atomic: all or nothing (no partial uploads)
+- Best for production deployments
+
+### scp - Direct upload (no checksum)
+
+```yaml
+scripts:
+  - scp: ./server:/app/server
+  - scp: ./dist:/var/www/html
+```
+
+Features:
+- Fastest method (no checksum comparison)
+- Uploads all files unconditionally
+- Use for quick development deploys
 
 ### run - Run command on remote server
 
 ```yaml
 scripts:
-  - run: sudo systemctl restart myapp
+  - run: echo "Hello from server"
   - run: |
       cd /app
-      ./migrate.sh
+      ./server restart
       sudo systemctl restart myapp
 ```
+
+## Upload Comparison
+
+| Method | Checksum | Atomic | Speed | Use Case |
+|--------|----------|--------|-------|----------|
+| `sync` | ✓ (before + after) | ✗ | Medium | Incremental deploys |
+| `tar` | ✓ (tar content) | ✓ | Medium | Production deploys |
+| `scp` | ✗ | ✗ | Fast | Development deploys |
 
 ## Example: Go Web Server Deployment
 
 ```yaml
 servers:
   production:
-    host: myserver.com
+    host: example.com
     user: ubuntu
     key: ~/.ssh/id_rsa
 
@@ -140,8 +157,8 @@ tasks:
       # 1. Build for Linux locally
       - local: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o server-linux .
 
-      # 2. Upload to server
-      - upload: server-linux:/app/server-new
+      # 2. Upload with tar (atomic)
+      - tar: server-linux:/app/server-new
 
       # 3. Replace and restart on server
       - run: |
@@ -207,7 +224,7 @@ tasks:
     on: [web]  # automatically expands to web[0], web[1], web[2]
     parallel: true
     scripts:
-      - upload: ./app:/app/server-new
+      - tar: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 
@@ -218,7 +235,7 @@ tasks:
   deploy:
     on: [web1, web2]  # runs sequentially
     scripts:
-      - upload: ./app:/app/server-new
+      - tar: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 
@@ -230,7 +247,7 @@ tasks:
     on: [web1, web2, web3]
     parallel: true  # run on all servers simultaneously
     scripts:
-      - upload: ./app:/app/server-new
+      - tar: ./app:/app/server-new
       - run: sudo systemctl restart myapp
 ```
 

@@ -85,22 +85,85 @@ func (c *Client) Run(command string, stdout, stderr io.Writer) error {
 	return session.Run(command)
 }
 
-// Upload uploads a single file with checksum verification
-func (c *Client) Upload(localPath, remotePath string) error {
+// UploadSync uploads file/directory with checksum comparison (only changed files)
+func (c *Client) UploadSync(localPath, remotePath string) (int, error) {
+	stat, err := os.Stat(localPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat local path: %w", err)
+	}
+
+	if stat.IsDir() {
+		return c.uploadDirSync(localPath, remotePath)
+	}
+	return c.uploadFileSync(localPath, remotePath)
+}
+
+// UploadTar uploads file/directory as tar.gz (atomic)
+func (c *Client) UploadTar(localPath, remotePath string) error {
 	stat, err := os.Stat(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to stat local path: %w", err)
 	}
 
 	if stat.IsDir() {
-		return fmt.Errorf("use UploadDir for directories: %s", localPath)
+		return c.uploadDirTar(localPath, remotePath)
 	}
-
-	return c.uploadFile(localPath, remotePath)
+	return c.uploadFileTar(localPath, remotePath)
 }
 
-// UploadDir uploads a directory (changed files only, rsync-style)
-func (c *Client) UploadDir(localDir, remoteDir string) (int, error) {
+// UploadSCP uploads file/directory via SCP (no checksum comparison)
+func (c *Client) UploadSCP(localPath, remotePath string) (int, error) {
+	stat, err := os.Stat(localPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat local path: %w", err)
+	}
+
+	if stat.IsDir() {
+		return c.uploadDirSCP(localPath, remotePath)
+	}
+	return c.uploadFileSCP(localPath, remotePath)
+}
+
+// uploadFileSync uploads a single file with checksum verification
+func (c *Client) uploadFileSync(localPath, remotePath string) (int, error) {
+	// 로컬 파일 체크섬 계산
+	localChecksum, err := c.getLocalChecksum(localPath)
+	if err != nil {
+		return 0, err
+	}
+
+	// 원격 파일 체크섬 확인
+	remoteChecksum, err := c.getRemoteChecksum(remotePath)
+	if err == nil && remoteChecksum == localChecksum {
+		if c.verbose {
+			fmt.Printf("      Skip (unchanged): %s\n", filepath.Base(localPath))
+		}
+		return 0, nil // 변경 없음
+	}
+
+	// 변경된 파일 업로드
+	if err := c.scpFile(localPath, remotePath); err != nil {
+		return 0, err
+	}
+
+	// 체크섬 검증
+	remoteChecksum, err = c.getRemoteChecksum(remotePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to verify remote checksum: %w", err)
+	}
+
+	if localChecksum != remoteChecksum {
+		return 0, fmt.Errorf("checksum mismatch: local=%s, remote=%s", localChecksum, remoteChecksum)
+	}
+
+	if c.verbose {
+		fmt.Printf("      ✓ Uploaded and verified: %s\n", filepath.Base(localPath))
+	}
+	return 1, nil
+}
+
+// uploadDirSync uploads a directory with checksum comparison (only changed files)
+func (c *Client) uploadDirSync(localDir, remoteDir string) (int, error) {
 	// 원격 디렉토리 생성
 	if err := c.Run(fmt.Sprintf("mkdir -p %s", remoteDir), io.Discard, io.Discard); err != nil {
 		return 0, fmt.Errorf("failed to create remote directory: %w", err)
@@ -151,7 +214,7 @@ func (c *Client) UploadDir(localDir, remoteDir string) (int, error) {
 		if c.verbose {
 			fmt.Printf("      Upload: %s\n", relPath)
 		}
-		if err := c.uploadFile(path, remotePath); err != nil {
+		if err := c.scpFile(path, remotePath); err != nil {
 			return err
 		}
 		uploaded++
@@ -165,9 +228,73 @@ func (c *Client) UploadDir(localDir, remoteDir string) (int, error) {
 	return uploaded, err
 }
 
-// UploadDirTar uploads a directory as tar.gz and extracts on remote
-func (c *Client) UploadDirTar(localDir, remoteDir string) error {
-	// 1. 로컬에서 tar.gz 생성 (메모리)
+// uploadFileTar uploads a single file as tar.gz (atomic)
+func (c *Client) uploadFileTar(localPath, remotePath string) error {
+	// 로컬 파일 읽기
+	fileContent, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to read local file: %w", err)
+	}
+
+	stat, err := os.Stat(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat local file: %w", err)
+	}
+
+	// tar.gz 생성 (메모리)
+	var tarBuffer bytes.Buffer
+	gzWriter := gzip.NewWriter(&tarBuffer)
+	tarWriter := tar.NewWriter(gzWriter)
+
+	header := &tar.Header{
+		Name:    filepath.Base(localPath),
+		Size:    stat.Size(),
+		Mode:    0644,
+		ModTime: stat.ModTime(),
+	}
+	if err := tarWriter.WriteHeader(header); err != nil {
+		return fmt.Errorf("failed to write tar header: %w", err)
+	}
+	if _, err := tarWriter.Write(fileContent); err != nil {
+		return fmt.Errorf("failed to write tar content: %w", err)
+	}
+
+	tarWriter.Close()
+	gzWriter.Close()
+
+	tarContent := tarBuffer.Bytes()
+	tarHash := sha256.Sum256(tarContent)
+	tarHashStr := hex.EncodeToString(tarHash[:])
+
+	if c.verbose {
+		fmt.Printf("      Tar size: %d bytes\n", len(tarContent))
+		fmt.Printf("      Tar SHA256: %s\n", tarHashStr)
+	}
+
+	// 원격에 임시 파일로 업로드
+	remoteTar := fmt.Sprintf("/tmp/envir-%s.tar.gz", tarHashStr[:8])
+	if err := c.scpBytes(tarContent, remoteTar); err != nil {
+		return fmt.Errorf("failed to upload tar: %w", err)
+	}
+
+	// 원격에서 압축 해제 (원자적 교체)
+	remoteDir := filepath.Dir(remotePath)
+	extractCmd := fmt.Sprintf("mkdir -p %s && tar -xzf %s -C %s && rm -f %s", remoteDir, remoteTar, remoteDir, remoteTar)
+	var stderr bytes.Buffer
+	if err := c.Run(extractCmd, io.Discard, &stderr); err != nil {
+		return fmt.Errorf("failed to extract tar: %w (stderr: %s)", err, stderr.String())
+	}
+
+	if c.verbose {
+		fmt.Printf("      ✓ Extracted to %s\n", remotePath)
+	}
+
+	return nil
+}
+
+// uploadDirTar uploads a directory as tar.gz (atomic)
+func (c *Client) uploadDirTar(localDir, remoteDir string) error {
+	// tar.gz 생성 (메모리)
 	var tarBuffer bytes.Buffer
 	gzWriter := gzip.NewWriter(&tarBuffer)
 	tarWriter := tar.NewWriter(gzWriter)
@@ -221,13 +348,13 @@ func (c *Client) UploadDirTar(localDir, remoteDir string) error {
 		fmt.Printf("      Tar SHA256: %s\n", tarHashStr)
 	}
 
-	// 2. 원격에 임시 파일로 업로드
+	// 원격에 임시 파일로 업로드
 	remoteTar := fmt.Sprintf("/tmp/envir-%s.tar.gz", tarHashStr[:8])
-	if err := c.uploadBytes(tarContent, remoteTar); err != nil {
+	if err := c.scpBytes(tarContent, remoteTar); err != nil {
 		return fmt.Errorf("failed to upload tar: %w", err)
 	}
 
-	// 3. 원격에서 압축 해제
+	// 원격에서 압축 해제
 	extractCmd := fmt.Sprintf("mkdir -p %s && tar -xzf %s -C %s && rm -f %s", remoteDir, remoteTar, remoteDir, remoteTar)
 	var stderr bytes.Buffer
 	if err := c.Run(extractCmd, io.Discard, &stderr); err != nil {
@@ -241,8 +368,60 @@ func (c *Client) UploadDirTar(localDir, remoteDir string) error {
 	return nil
 }
 
-func (c *Client) uploadFile(localPath, remotePath string) error {
-	// 1. 로컬 파일 읽기 및 체크섬 계산
+// uploadFileSCP uploads a single file via SCP (no checksum)
+func (c *Client) uploadFileSCP(localPath, remotePath string) (int, error) {
+	if err := c.scpFile(localPath, remotePath); err != nil {
+		return 0, err
+	}
+	if c.verbose {
+		fmt.Printf("      ✓ Uploaded: %s\n", filepath.Base(localPath))
+	}
+	return 1, nil
+}
+
+// uploadDirSCP uploads all files in a directory via SCP (no checksum)
+func (c *Client) uploadDirSCP(localDir, remoteDir string) (int, error) {
+	// 원격 디렉토리 생성
+	if err := c.Run(fmt.Sprintf("mkdir -p %s", remoteDir), io.Discard, io.Discard); err != nil {
+		return 0, fmt.Errorf("failed to create remote directory: %w", err)
+	}
+
+	uploaded := 0
+
+	err := filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// 상대 경로 계산
+		relPath, _ := filepath.Rel(localDir, path)
+		remotePath := filepath.Join(remoteDir, relPath)
+
+		if info.IsDir() {
+			// 원격 디렉토리 생성
+			return c.Run(fmt.Sprintf("mkdir -p %s", remotePath), io.Discard, io.Discard)
+		}
+
+		// 파일 업로드 (체크섬 비교 없음)
+		if c.verbose {
+			fmt.Printf("      Upload: %s\n", relPath)
+		}
+		if err := c.scpFile(path, remotePath); err != nil {
+			return err
+		}
+		uploaded++
+		return nil
+	})
+
+	if c.verbose {
+		fmt.Printf("      Total uploaded: %d files\n", uploaded)
+	}
+
+	return uploaded, err
+}
+
+// scpFile transfers a single file via SCP
+func (c *Client) scpFile(localPath, remotePath string) error {
 	fileContent, err := os.ReadFile(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to read local file: %w", err)
@@ -253,15 +432,10 @@ func (c *Client) uploadFile(localPath, remotePath string) error {
 		return fmt.Errorf("failed to stat local file: %w", err)
 	}
 
-	localHash := sha256.Sum256(fileContent)
-	localHashStr := hex.EncodeToString(localHash[:])
+	// 원격 디렉토리 생성
+	remoteDir := filepath.Dir(remotePath)
+	c.Run(fmt.Sprintf("mkdir -p %s", remoteDir), io.Discard, io.Discard)
 
-	if c.verbose {
-		fmt.Printf("      Local file: %s (%d bytes)\n", localPath, stat.Size())
-		fmt.Printf("      Local SHA256: %s\n", localHashStr)
-	}
-
-	// 2. SCP로 파일 전송
 	session, err := c.conn.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
@@ -275,10 +449,6 @@ func (c *Client) uploadFile(localPath, remotePath string) error {
 
 	var scpStderr bytes.Buffer
 	session.Stderr = &scpStderr
-
-	// 원격 디렉토리 생성
-	remoteDir := filepath.Dir(remotePath)
-	c.Run(fmt.Sprintf("mkdir -p %s", remoteDir), io.Discard, io.Discard)
 
 	// SCP 명령 시작 (-t: sink mode)
 	if err := session.Start(fmt.Sprintf("/usr/bin/scp -t %s", remotePath)); err != nil {
@@ -307,32 +477,11 @@ func (c *Client) uploadFile(localPath, remotePath string) error {
 		return fmt.Errorf("scp failed: %w (stderr: %s)", err, scpStderr.String())
 	}
 
-	if c.verbose {
-		fmt.Printf("      SCP transfer completed\n")
-	}
-
-	// 3. 원격 파일 체크섬 검증
-	remoteHashStr, err := c.getRemoteChecksum(remotePath)
-	if err != nil {
-		return fmt.Errorf("failed to verify remote checksum: %w", err)
-	}
-
-	if c.verbose {
-		fmt.Printf("      Remote SHA256: %s\n", remoteHashStr)
-	}
-
-	if localHashStr != remoteHashStr {
-		return fmt.Errorf("checksum mismatch: local=%s, remote=%s", localHashStr, remoteHashStr)
-	}
-
-	if c.verbose {
-		fmt.Printf("      ✓ Checksum verified\n")
-	}
-
 	return nil
 }
 
-func (c *Client) uploadBytes(content []byte, remotePath string) error {
+// scpBytes transfers bytes content via SCP
+func (c *Client) scpBytes(content []byte, remotePath string) error {
 	session, err := c.conn.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
