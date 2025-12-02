@@ -10,8 +10,12 @@ import (
 
 func Execute(args []string) error {
 	if len(args) < 1 {
-		printUsage()
-		return nil
+		// 인자 없으면 task 목록 표시 (파일 없으면 help)
+		if _, err := os.Stat("Envirfile.yaml"); os.IsNotExist(err) {
+			printUsage()
+			return nil
+		}
+		return listTasks()
 	}
 
 	command := args[0]
