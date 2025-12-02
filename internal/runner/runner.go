@@ -223,7 +223,7 @@ func (r *Runner) runScript(serverName string, server config.Server, script confi
 		return err
 	}
 
-	// 업로드
+	// 파일 업로드
 	if script.Upload != "" {
 		parts := strings.SplitN(script.Upload, ":", 2)
 		if len(parts) != 2 {
@@ -235,6 +235,41 @@ func (r *Runner) runScript(serverName string, server config.Server, script confi
 			return err
 		}
 		err = client.Upload(parts[0], parts[1])
+		r.logElapsed(stdout, startTime)
+		return err
+	}
+
+	// 디렉토리 업로드 (변경분만, rsync 스타일)
+	if script.UploadDir != "" {
+		parts := strings.SplitN(script.UploadDir, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid upload_dir format: %s (expected 'local:remote')", script.UploadDir)
+		}
+		r.logScript(stdout, "📁 Sync", fmt.Sprintf("%s → %s", parts[0], parts[1]))
+		client, err := r.getClient(serverName, server)
+		if err != nil {
+			return err
+		}
+		uploaded, err := client.UploadDir(parts[0], parts[1])
+		if err == nil {
+			fmt.Fprintf(stdout, "      %d file(s) uploaded\n", uploaded)
+		}
+		r.logElapsed(stdout, startTime)
+		return err
+	}
+
+	// 디렉토리 tar 업로드 (압축해서 전체 교체)
+	if script.UploadTar != "" {
+		parts := strings.SplitN(script.UploadTar, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid upload_tar format: %s (expected 'local:remote')", script.UploadTar)
+		}
+		r.logScript(stdout, "📦 Tar", fmt.Sprintf("%s → %s", parts[0], parts[1]))
+		client, err := r.getClient(serverName, server)
+		if err != nil {
+			return err
+		}
+		err = client.UploadDirTar(parts[0], parts[1])
 		r.logElapsed(stdout, startTime)
 		return err
 	}

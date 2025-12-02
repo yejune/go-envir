@@ -86,8 +86,31 @@ scripts:
 ```yaml
 scripts:
   - upload: ./server:/app/server-new
-  - upload: ./dist:/var/www/html
 ```
+
+SHA256 체크섬 검증 포함.
+
+### upload_dir - 디렉토리 업로드 (rsync 스타일)
+
+```yaml
+scripts:
+  - upload_dir: ./dist:/var/www/html
+```
+
+- 업로드 전 체크섬 비교
+- 변경된 파일만 업로드
+- 기존 파일 유지
+
+### upload_tar - tar.gz로 디렉토리 업로드
+
+```yaml
+scripts:
+  - upload_tar: ./dist:/var/www/html
+```
+
+- 메모리에서 tar.gz 생성
+- 원격에서 압축 해제
+- 전체 디렉토리 교체 (파일이 많을 때 빠름)
 
 ### run - 원격 명령 실행
 

@@ -86,8 +86,31 @@ scripts:
 ```yaml
 scripts:
   - upload: ./server:/app/server-new
-  - upload: ./dist:/var/www/html
 ```
+
+Single file upload with SHA256 checksum verification.
+
+### upload_dir - Upload directory (rsync-style)
+
+```yaml
+scripts:
+  - upload_dir: ./dist:/var/www/html
+```
+
+- Compares checksums before upload
+- Only uploads changed files
+- Keeps existing unchanged files
+
+### upload_tar - Upload directory as tar.gz
+
+```yaml
+scripts:
+  - upload_tar: ./dist:/var/www/html
+```
+
+- Creates tar.gz in memory
+- Uploads and extracts on remote
+- Replaces entire directory (faster for many files)
 
 ### run - Run command on remote server
 
