@@ -1,11 +1,13 @@
 package runner
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/yejune/go-envir/internal/config"
 	"github.com/yejune/go-envir/internal/ssh"
@@ -14,6 +16,7 @@ import (
 type Runner struct {
 	config  *config.EnvirConfig
 	clients map[string]*ssh.Client
+	mu      sync.Mutex
 	stdout  io.Writer
 	stderr  io.Writer
 }
@@ -52,8 +55,22 @@ func (r *Runner) Run(taskName string, serverFilter string) error {
 		}
 	}
 
-	fmt.Printf("🚀 Running task: %s\n", taskName)
+	fmt.Printf("🚀 Running task: %s", taskName)
+	if task.Parallel && len(servers) > 1 {
+		fmt.Printf(" (parallel)")
+	}
+	fmt.Println()
 
+	// 병렬 실행
+	if task.Parallel && len(servers) > 1 {
+		return r.runParallel(task, servers)
+	}
+
+	// 순차 실행
+	return r.runSequential(task, servers)
+}
+
+func (r *Runner) runSequential(task config.Task, servers []string) error {
 	for _, serverName := range servers {
 		server, ok := r.config.Servers[serverName]
 		if !ok {
@@ -62,23 +79,85 @@ func (r *Runner) Run(taskName string, serverFilter string) error {
 
 		fmt.Printf("\n📡 [%s] %s\n", serverName, server.Host)
 
-		// 스크립트 실행
 		for _, script := range task.Scripts {
-			if err := r.runScript(serverName, server, script); err != nil {
+			if err := r.runScript(serverName, server, script, r.stdout, r.stderr); err != nil {
 				return fmt.Errorf("[%s] script failed: %w", serverName, err)
 			}
 		}
 	}
 
-	fmt.Printf("\n✅ Task '%s' completed\n", taskName)
+	fmt.Printf("\n✅ Task completed\n")
 	return nil
 }
 
-func (r *Runner) runScript(serverName string, server config.Server, script config.Script) error {
+func (r *Runner) runParallel(task config.Task, servers []string) error {
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(servers))
+	results := make(map[string]*bytes.Buffer)
+	var resultsMu sync.Mutex
+
+	for _, serverName := range servers {
+		server, ok := r.config.Servers[serverName]
+		if !ok {
+			return fmt.Errorf("server '%s' not found", serverName)
+		}
+
+		wg.Add(1)
+		go func(srvName string, srv config.Server) {
+			defer wg.Done()
+
+			// 각 서버별 출력 버퍼
+			buf := &bytes.Buffer{}
+			buf.WriteString(fmt.Sprintf("\n📡 [%s] %s\n", srvName, srv.Host))
+
+			for _, script := range task.Scripts {
+				if err := r.runScript(srvName, srv, script, buf, buf); err != nil {
+					buf.WriteString(fmt.Sprintf("   ❌ Error: %v\n", err))
+					errCh <- fmt.Errorf("[%s] %w", srvName, err)
+					resultsMu.Lock()
+					results[srvName] = buf
+					resultsMu.Unlock()
+					return
+				}
+			}
+
+			buf.WriteString(fmt.Sprintf("   ✓ Done\n"))
+			resultsMu.Lock()
+			results[srvName] = buf
+			resultsMu.Unlock()
+		}(serverName, server)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	// 결과 출력 (순서대로)
+	for _, serverName := range servers {
+		if buf, ok := results[serverName]; ok {
+			fmt.Print(buf.String())
+		}
+	}
+
+	// 에러 수집
+	var errs []error
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		fmt.Printf("\n❌ %d server(s) failed\n", len(errs))
+		return errs[0]
+	}
+
+	fmt.Printf("\n✅ All %d servers completed\n", len(servers))
+	return nil
+}
+
+func (r *Runner) runScript(serverName string, server config.Server, script config.Script, stdout, stderr io.Writer) error {
 	// 로컬 실행
 	if script.Local != "" {
-		fmt.Printf("   ⚡ Local: %s\n", truncate(script.Local, 60))
-		return r.runLocal(script.Local)
+		fmt.Fprintf(stdout, "   ⚡ Local: %s\n", truncate(script.Local, 60))
+		return r.runLocal(script.Local, stdout, stderr)
 	}
 
 	// 업로드
@@ -87,7 +166,7 @@ func (r *Runner) runScript(serverName string, server config.Server, script confi
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid upload format: %s (expected 'local:remote')", script.Upload)
 		}
-		fmt.Printf("   📤 Upload: %s → %s\n", parts[0], parts[1])
+		fmt.Fprintf(stdout, "   📤 Upload: %s → %s\n", parts[0], parts[1])
 		client, err := r.getClient(serverName, server)
 		if err != nil {
 			return err
@@ -97,25 +176,28 @@ func (r *Runner) runScript(serverName string, server config.Server, script confi
 
 	// 원격 실행
 	if script.Run != "" {
-		fmt.Printf("   ▶ Run: %s\n", truncate(script.Run, 60))
+		fmt.Fprintf(stdout, "   ▶ Run: %s\n", truncate(script.Run, 60))
 		client, err := r.getClient(serverName, server)
 		if err != nil {
 			return err
 		}
-		return client.Run(script.Run, r.stdout, r.stderr)
+		return client.Run(script.Run, stdout, stderr)
 	}
 
 	return nil
 }
 
-func (r *Runner) runLocal(command string) error {
+func (r *Runner) runLocal(command string, stdout, stderr io.Writer) error {
 	cmd := exec.Command("sh", "-c", command)
-	cmd.Stdout = r.stdout
-	cmd.Stderr = r.stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	return cmd.Run()
 }
 
 func (r *Runner) getClient(serverName string, server config.Server) (*ssh.Client, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if client, ok := r.clients[serverName]; ok {
 		return client, nil
 	}

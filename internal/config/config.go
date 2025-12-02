@@ -22,8 +22,9 @@ type Server struct {
 
 type Task struct {
 	Description string   `yaml:"description"`
-	On          []string `yaml:"on"`      // Server names
-	Scripts     []Script `yaml:"scripts"` // List of scripts
+	On          []string `yaml:"on"`       // Server names
+	Parallel    bool     `yaml:"parallel"` // Run on servers in parallel
+	Scripts     []Script `yaml:"scripts"`  // List of scripts
 }
 
 type Script struct {

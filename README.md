@@ -167,15 +167,9 @@ servers:
 
 ## 여러 서버에 배포
 
-```yaml
-servers:
-  web1:
-    host: web1.example.com
-    user: deploy
-  web2:
-    host: web2.example.com
-    user: deploy
+### 순차 실행 (기본)
 
+```yaml
 tasks:
   deploy:
     on: [web1, web2]  # 순차적으로 실행
@@ -184,7 +178,24 @@ tasks:
       - run: sudo systemctl restart myapp
 ```
 
-특정 서버만 지정:
+### 병렬 실행
+
+```yaml
+tasks:
+  deploy:
+    on: [web1, web2, web3]
+    parallel: true  # 모든 서버에 동시 실행
+    scripts:
+      - upload: ./app:/app/server-new
+      - run: sudo systemctl restart myapp
+```
+
+병렬 실행 시:
+- 모든 서버에 동시에 배포
+- 각 서버의 출력은 버퍼링 후 순서대로 표시
+- 하나라도 실패하면 에러 반환
+
+### 특정 서버만 지정
 
 ```bash
 envir deploy --on=web1
