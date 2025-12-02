@@ -1,0 +1,16 @@
+# Build artifacts
+build/
+dist/
+envir
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Test files
+Envirfile.yaml
+envir.log

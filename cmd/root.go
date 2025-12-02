@@ -38,6 +38,13 @@ func Execute(args []string) error {
 		printUsage()
 		return nil
 
+	case "version", "--version", "-V":
+		fmt.Printf("envir version %s\n", Version)
+		return nil
+
+	case "self-update", "selfupdate":
+		return SelfUpdate()
+
 	default:
 		// 기본: task 이름으로 간주
 		return runTask(command, parseServer(args), parseVerbose(args))
@@ -160,7 +167,7 @@ func parseVerbose(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Println(`Go Envir - SSH deployment tool
+	fmt.Printf(`Go Envir - SSH deployment tool (version %s)
 
 Usage:
   envir <task>              Run a task
@@ -169,6 +176,8 @@ Usage:
   envir run <task> --on=X   Run on specific server
   envir list                List available tasks
   envir init                Create example Envirfile.yaml
+  envir version             Show version
+  envir self-update         Update to latest version
 
 Options:
   -v, --verbose             Show detailed output (timing, checksums, etc.)
@@ -179,5 +188,6 @@ Examples:
   envir deploy -v           Deploy with verbose output
   envir logs                View logs
   envir status              Check service status
-  envir rollback            Rollback to previous version`)
+  envir rollback            Rollback to previous version
+`, Version)
 }
