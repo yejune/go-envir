@@ -168,6 +168,26 @@ servers:
 
 ## Multi-Server Deployment
 
+### Multiple Hosts (Array)
+
+```yaml
+servers:
+  web:
+    hosts:
+      - web1.example.com
+      - web2.example.com
+      - web3.example.com
+    user: ubuntu
+
+tasks:
+  deploy:
+    on: [web]  # automatically expands to web[0], web[1], web[2]
+    parallel: true
+    scripts:
+      - upload: ./app:/app/server-new
+      - run: sudo systemctl restart myapp
+```
+
 ### Sequential Execution (default)
 
 ```yaml

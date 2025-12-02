@@ -43,17 +43,21 @@ func (r *Runner) Run(taskName string, serverFilter string) error {
 	}
 
 	// 서버 목록 결정
-	servers := task.On
+	var servers []string
 	if serverFilter != "" {
 		servers = []string{serverFilter}
-	}
-	if len(servers) == 0 {
+	} else if len(task.On) > 0 {
+		servers = task.On
+	} else {
 		// 기본 서버 사용
 		for name := range r.config.Servers {
 			servers = append(servers, name)
 			break
 		}
 	}
+
+	// 배열 host를 가진 서버는 자동 확장
+	servers = r.config.GetExpandedServers(servers)
 
 	fmt.Printf("🚀 Running task: %s", taskName)
 	if task.Parallel && len(servers) > 1 {
@@ -77,7 +81,8 @@ func (r *Runner) runSequential(task config.Task, servers []string) error {
 			return fmt.Errorf("server '%s' not found", serverName)
 		}
 
-		fmt.Printf("\n📡 [%s] %s\n", serverName, server.Host)
+		host := getHost(server)
+		fmt.Printf("\n📡 [%s] %s\n", serverName, host)
 
 		for _, script := range task.Scripts {
 			if err := r.runScript(serverName, server, script, r.stdout, r.stderr); err != nil {
@@ -108,7 +113,7 @@ func (r *Runner) runParallel(task config.Task, servers []string) error {
 
 			// 각 서버별 출력 버퍼
 			buf := &bytes.Buffer{}
-			buf.WriteString(fmt.Sprintf("\n📡 [%s] %s\n", srvName, srv.Host))
+			buf.WriteString(fmt.Sprintf("\n📡 [%s] %s\n", srvName, getHost(srv)))
 
 			for _, script := range task.Scripts {
 				if err := r.runScript(srvName, srv, script, buf, buf); err != nil {
@@ -207,7 +212,7 @@ func (r *Runner) getClient(serverName string, server config.Server) (*ssh.Client
 		keyPath = "~/.ssh/id_rsa"
 	}
 
-	client, err := ssh.NewClient(server.Host, server.User, keyPath, server.Port)
+	client, err := ssh.NewClient(getHost(server), server.User, keyPath, server.Port)
 	if err != nil {
 		return nil, err
 	}
@@ -222,4 +227,12 @@ func truncate(s string, max int) string {
 		return s[:max-3] + "..."
 	}
 	return s
+}
+
+// getHost extracts host string from Server
+func getHost(server config.Server) string {
+	if len(server.Hosts) > 0 {
+		return server.Hosts[0]
+	}
+	return server.Host
 }

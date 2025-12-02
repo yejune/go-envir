@@ -168,6 +168,26 @@ servers:
 
 ## 여러 서버에 배포
 
+### 배열 호스트
+
+```yaml
+servers:
+  web:
+    hosts:
+      - web1.example.com
+      - web2.example.com
+      - web3.example.com
+    user: ubuntu
+
+tasks:
+  deploy:
+    on: [web]  # 자동으로 web[0], web[1], web[2]로 확장
+    parallel: true
+    scripts:
+      - upload: ./app:/app/server-new
+      - run: sudo systemctl restart myapp
+```
+
 ### 순차 실행 (기본)
 
 ```yaml
