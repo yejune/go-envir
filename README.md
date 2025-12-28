@@ -1,18 +1,18 @@
-# Go Envir
+# Gorelay
 
 SSH deployment tool inspired by PHP Envoy
 
 ## Installation
 
 ```bash
-go install github.com/yejune/go-envir@latest
+go install github.com/yejune/gorelay@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/yejune/go-envir.git
-cd go-envir
+git clone https://github.com/yejune/gorelay.git
+cd gorelay
 go install .
 ```
 
@@ -20,27 +20,27 @@ go install .
 
 ```bash
 # 1. Initialize in your project folder
-envir init
+gorelay init
 
-# 2. Edit Envirfile.yaml (server info, task settings)
+# 2. Edit Gorelayfile.yaml (server info, task settings)
 
 # 3. Run deployment
-envir deploy
+gorelay deploy
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `envir` | Show available tasks (if Envirfile.yaml exists) |
-| `envir init` | Create Envirfile.yaml template |
-| `envir list` | List available tasks |
-| `envir <task>` | Run a task |
-| `envir <task> --on=<server>` | Run on specific server only |
-| `envir <task> -v` | Run with verbose output |
-| `envir help` | Show help |
+| `gorelay` | Show available tasks (if Gorelayfile.yaml exists) |
+| `gorelay init` | Create Gorelayfile.yaml template |
+| `gorelay list` | List available tasks |
+| `gorelay <task>` | Run a task |
+| `gorelay <task> --on=<server>` | Run on specific server only |
+| `gorelay <task> -v` | Run with verbose output |
+| `gorelay help` | Show help |
 
-## Envirfile.yaml Structure
+## Gorelayfile.yaml Structure
 
 ```yaml
 # Server definitions
@@ -194,9 +194,9 @@ tasks:
           sudo systemctl restart myapp
 ```
 
-## Environment Variables
+## Gorelayonment Variables
 
-Environment variables can be used in Envirfile.yaml:
+Gorelayonment variables can be used in Gorelayfile.yaml:
 
 ```yaml
 servers:
@@ -259,17 +259,17 @@ When running in parallel:
 ### Specify Specific Server
 
 ```bash
-envir deploy --on=web1
+gorelay deploy --on=web1
 ```
 
 ## Logging
 
-Enable file logging in Envirfile.yaml:
+Enable file logging in Gorelayfile.yaml:
 
 ```yaml
 log:
   enabled: true
-  path: ./envir.log  # default: envir.log
+  path: ./gorelay.log  # default: gorelay.log
 ```
 
 When enabled, all output is saved to the log file with timestamps.
@@ -279,7 +279,7 @@ When enabled, all output is saved to the log file with timestamps.
 Use `-v` flag for detailed output:
 
 ```bash
-envir deploy -v
+gorelay deploy -v
 ```
 
 Shows:

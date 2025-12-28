@@ -5,14 +5,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/yejune/go-envir/internal/config"
-	"github.com/yejune/go-envir/internal/runner"
+	"github.com/yejune/gorelay/internal/config"
+	"github.com/yejune/gorelay/internal/runner"
 )
 
 func Execute(args []string) error {
 	if len(args) < 1 {
 		// 인자 없으면 task 목록 표시 (파일 없으면 help)
-		if _, err := os.Stat("Envirfile.yaml"); os.IsNotExist(err) {
+		if _, err := os.Stat("Gorelayfile.yaml"); os.IsNotExist(err) {
 			printUsage()
 			return nil
 		}
@@ -24,7 +24,7 @@ func Execute(args []string) error {
 	switch command {
 	case "run":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: envir run <task> [--on=server] [-v]")
+			return fmt.Errorf("usage: gorelay run <task> [--on=server] [-v]")
 		}
 		return runTask(args[1], parseServer(args), parseVerbose(args))
 
@@ -39,7 +39,7 @@ func Execute(args []string) error {
 		return nil
 
 	case "version", "--version", "-V":
-		fmt.Printf("envir version %s\n", Version)
+		fmt.Printf("gorelay version %s\n", Version)
 		return nil
 
 	case "self-update", "selfupdate":
@@ -52,7 +52,7 @@ func Execute(args []string) error {
 }
 
 func runTask(taskName string, serverFilter string, verbose bool) error {
-	cfg, err := config.Load("Envirfile.yaml")
+	cfg, err := config.Load("Gorelayfile.yaml")
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -68,7 +68,7 @@ func runTask(taskName string, serverFilter string, verbose bool) error {
 }
 
 func listTasks() error {
-	cfg, err := config.Load("Envirfile.yaml")
+	cfg, err := config.Load("Gorelayfile.yaml")
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -85,11 +85,11 @@ func listTasks() error {
 }
 
 func initConfig() error {
-	if _, err := os.Stat("Envirfile.yaml"); err == nil {
-		return fmt.Errorf("Envirfile.yaml already exists")
+	if _, err := os.Stat("Gorelayfile.yaml"); err == nil {
+		return fmt.Errorf("Gorelayfile.yaml already exists")
 	}
 
-	example := `# Envirfile.yaml - Go Envir 배포 설정
+	example := `# Gorelayfile.yaml - Gorelay 배포 설정
 servers:
   production:
     host: example.com
@@ -100,7 +100,7 @@ servers:
 # 로그 설정 (선택)
 log:
   enabled: true
-  path: ./envir.log
+  path: ./gorelay.log
 
 tasks:
   deploy:
@@ -140,11 +140,11 @@ tasks:
           sudo systemctl restart myapp
 `
 
-	if err := os.WriteFile("Envirfile.yaml", []byte(example), 0644); err != nil {
-		return fmt.Errorf("failed to write Envirfile.yaml: %w", err)
+	if err := os.WriteFile("Gorelayfile.yaml", []byte(example), 0644); err != nil {
+		return fmt.Errorf("failed to write Gorelayfile.yaml: %w", err)
 	}
 
-	fmt.Println("Created Envirfile.yaml")
+	fmt.Println("Created Gorelayfile.yaml")
 	return nil
 }
 
@@ -167,27 +167,27 @@ func parseVerbose(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Printf(`Go Envir - SSH deployment tool (version %s)
+	fmt.Printf(`Gorelay - SSH deployment tool (version %s)
 
 Usage:
-  envir <task>              Run a task
-  envir <task> -v           Run with verbose output
-  envir run <task>          Run a task (explicit)
-  envir run <task> --on=X   Run on specific server
-  envir list                List available tasks
-  envir init                Create example Envirfile.yaml
-  envir version             Show version
-  envir self-update         Update to latest version
+  gorelay <task>              Run a task
+  gorelay <task> -v           Run with verbose output
+  gorelay run <task>          Run a task (explicit)
+  gorelay run <task> --on=X   Run on specific server
+  gorelay list                List available tasks
+  gorelay init                Create example Gorelayfile.yaml
+  gorelay version             Show version
+  gorelay self-update         Update to latest version
 
 Options:
   -v, --verbose             Show detailed output (timing, checksums, etc.)
   --on=<server>             Run on specific server only
 
 Examples:
-  envir deploy              Deploy to production
-  envir deploy -v           Deploy with verbose output
-  envir logs                View logs
-  envir status              Check service status
-  envir rollback            Rollback to previous version
+  gorelay deploy              Deploy to production
+  gorelay deploy -v           Deploy with verbose output
+  gorelay logs                View logs
+  gorelay status              Check service status
+  gorelay rollback            Rollback to previous version
 `, Version)
 }

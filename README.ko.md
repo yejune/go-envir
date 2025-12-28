@@ -1,18 +1,18 @@
-# Go Envir
+# Gorelay
 
 PHP Envoy 스타일의 Go SSH 배포 도구
 
 ## 설치
 
 ```bash
-go install github.com/yejune/go-envir@latest
+go install github.com/yejune/gorelay@latest
 ```
 
 또는 소스에서 빌드:
 
 ```bash
-git clone https://github.com/yejune/go-envir.git
-cd go-envir
+git clone https://github.com/yejune/gorelay.git
+cd gorelay
 go install .
 ```
 
@@ -20,27 +20,27 @@ go install .
 
 ```bash
 # 1. 프로젝트 폴더에서 초기화
-envir init
+gorelay init
 
-# 2. Envirfile.yaml 수정 (서버 정보, 태스크 설정)
+# 2. Gorelayfile.yaml 수정 (서버 정보, 태스크 설정)
 
 # 3. 배포 실행
-envir deploy
+gorelay deploy
 ```
 
 ## 명령어
 
 | 명령어 | 설명 |
 |-------|------|
-| `envir` | 사용 가능한 태스크 목록 표시 (Envirfile.yaml 있을 때) |
-| `envir init` | Envirfile.yaml 템플릿 생성 |
-| `envir list` | 사용 가능한 태스크 목록 |
-| `envir <task>` | 태스크 실행 |
-| `envir <task> --on=<server>` | 특정 서버에서만 실행 |
-| `envir <task> -v` | 상세 출력으로 실행 |
-| `envir help` | 도움말 |
+| `gorelay` | 사용 가능한 태스크 목록 표시 (Gorelayfile.yaml 있을 때) |
+| `gorelay init` | Gorelayfile.yaml 템플릿 생성 |
+| `gorelay list` | 사용 가능한 태스크 목록 |
+| `gorelay <task>` | 태스크 실행 |
+| `gorelay <task> --on=<server>` | 특정 서버에서만 실행 |
+| `gorelay <task> -v` | 상세 출력으로 실행 |
+| `gorelay help` | 도움말 |
 
-## Envirfile.yaml 구조
+## Gorelayfile.yaml 구조
 
 ```yaml
 # 서버 정의
@@ -196,7 +196,7 @@ tasks:
 
 ## 환경 변수
 
-Envirfile.yaml에서 환경 변수 사용 가능:
+Gorelayfile.yaml에서 환경 변수 사용 가능:
 
 ```yaml
 servers:
@@ -259,17 +259,17 @@ tasks:
 ### 특정 서버만 지정
 
 ```bash
-envir deploy --on=web1
+gorelay deploy --on=web1
 ```
 
 ## 로깅
 
-Envirfile.yaml에서 파일 로깅 활성화:
+Gorelayfile.yaml에서 파일 로깅 활성화:
 
 ```yaml
 log:
   enabled: true
-  path: ./envir.log  # 기본값: envir.log
+  path: ./gorelay.log  # 기본값: gorelay.log
 ```
 
 활성화하면 모든 출력이 타임스탬프와 함께 로그 파일에 저장됩니다.
@@ -279,7 +279,7 @@ log:
 `-v` 플래그로 상세 출력:
 
 ```bash
-envir deploy -v
+gorelay deploy -v
 ```
 
 표시 내용:

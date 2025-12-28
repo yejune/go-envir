@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type EnvirConfig struct {
+type GorelayConfig struct {
 	Servers map[string]Server `yaml:"servers"`
 	Tasks   map[string]Task   `yaml:"tasks"`
 	Log     LogConfig         `yaml:"log"`
@@ -16,7 +16,7 @@ type EnvirConfig struct {
 
 type LogConfig struct {
 	Enabled bool   `yaml:"enabled"` // Enable logging to file
-	Path    string `yaml:"path"`    // Log file path (default: ./envir.log)
+	Path    string `yaml:"path"`    // Log file path (default: ./gorelay.log)
 }
 
 // Server can have single host or multiple hosts
@@ -25,8 +25,8 @@ type Server struct {
 	HostsYAML []string `yaml:"hosts"` // Multiple hosts (YAML key)
 	User      string   `yaml:"user"`
 	Port      int      `yaml:"port"`
-	Key       string   `yaml:"key"`   // SSH key path
-	Hosts     []string `yaml:"-"`     // Expanded hosts (internal use)
+	Key       string   `yaml:"key"` // SSH key path
+	Hosts     []string `yaml:"-"`   // Expanded hosts (internal use)
 }
 
 type Task struct {
@@ -44,10 +44,10 @@ type Script struct {
 	Scp   string `yaml:"scp"`   // SCP upload (direct transfer, no checksum)
 }
 
-func Load(path string) (*EnvirConfig, error) {
+func Load(path string) (*GorelayConfig, error) {
 	// Default path
 	if path == "" {
-		path = "Envirfile.yaml"
+		path = "Gorelayfile.yaml"
 	}
 
 	// Expand ~ in path
@@ -61,10 +61,10 @@ func Load(path string) (*EnvirConfig, error) {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	// Expand environment variables
+	// Expand gorelayonment variables
 	expanded := os.ExpandEnv(string(data))
 
-	var cfg EnvirConfig
+	var cfg GorelayConfig
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
@@ -118,7 +118,7 @@ func Load(path string) (*EnvirConfig, error) {
 
 // GetExpandedServers returns server names to run on
 // If server has multiple hosts, returns expanded names (web[0], web[1], etc.)
-func (cfg *EnvirConfig) GetExpandedServers(names []string) []string {
+func (cfg *GorelayConfig) GetExpandedServers(names []string) []string {
 	var result []string
 	for _, name := range names {
 		if server, ok := cfg.Servers[name]; ok {

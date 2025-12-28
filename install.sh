@@ -1,11 +1,11 @@
 #!/bin/bash
-# Go Envir installer script
-# Usage: curl -sSL https://raw.githubusercontent.com/yejune/go-envir/main/install.sh | bash
+# Gorelay installer script
+# Usage: curl -sSL https://raw.githubusercontent.com/yejune/gorelay/main/install.sh | bash
 
 set -e
 
-REPO="yejune/go-envir"
-BINARY="envir"
+REPO="yejune/gorelay"
+BINARY="gorelay"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and architecture
@@ -62,5 +62,5 @@ echo ""
 echo "✅ $BINARY $LATEST installed successfully!"
 echo ""
 echo "Get started:"
-echo "  envir init     # Create Envirfile.yaml"
-echo "  envir help     # Show help"
+echo "  gorelay init     # Create Gorelayfile.yaml"
+echo "  gorelay help     # Show help"

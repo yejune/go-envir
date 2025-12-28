@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yejune/go-envir/cmd"
+	"github.com/yejune/gorelay/cmd"
 )
 
 func main() {

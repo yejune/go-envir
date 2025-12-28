@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yejune/go-envir/internal/config"
-	"github.com/yejune/go-envir/internal/ssh"
+	"github.com/yejune/gorelay/internal/config"
+	"github.com/yejune/gorelay/internal/ssh"
 )
 
 type Runner struct {
-	config  *config.EnvirConfig
+	config  *config.GorelayConfig
 	clients map[string]*ssh.Client
 	mu      sync.Mutex
 	stdout  io.Writer
@@ -24,7 +24,7 @@ type Runner struct {
 	logFile *os.File
 }
 
-func New(cfg *config.EnvirConfig) *Runner {
+func New(cfg *config.GorelayConfig) *Runner {
 	r := &Runner{
 		config:  cfg,
 		clients: make(map[string]*ssh.Client),
@@ -36,7 +36,7 @@ func New(cfg *config.EnvirConfig) *Runner {
 	if cfg.Log.Enabled {
 		logPath := cfg.Log.Path
 		if logPath == "" {
-			logPath = "envir.log"
+			logPath = "gorelay.log"
 		}
 		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err == nil {

@@ -272,7 +272,7 @@ func (c *Client) uploadFileTar(localPath, remotePath string) error {
 	}
 
 	// 원격에 임시 파일로 업로드
-	remoteTar := fmt.Sprintf("/tmp/envir-%s.tar.gz", tarHashStr[:8])
+	remoteTar := fmt.Sprintf("/tmp/gorelay-%s.tar.gz", tarHashStr[:8])
 	if err := c.scpBytes(tarContent, remoteTar); err != nil {
 		return fmt.Errorf("failed to upload tar: %w", err)
 	}
@@ -349,7 +349,7 @@ func (c *Client) uploadDirTar(localDir, remoteDir string) error {
 	}
 
 	// 원격에 임시 파일로 업로드
-	remoteTar := fmt.Sprintf("/tmp/envir-%s.tar.gz", tarHashStr[:8])
+	remoteTar := fmt.Sprintf("/tmp/gorelay-%s.tar.gz", tarHashStr[:8])
 	if err := c.scpBytes(tarContent, remoteTar); err != nil {
 		return fmt.Errorf("failed to upload tar: %w", err)
 	}

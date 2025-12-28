@@ -1,4 +1,4 @@
-BINARY_NAME=envir
+BINARY_NAME=gorelay
 VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 BUILD_DIR=build
 DIST_DIR=dist
@@ -11,7 +11,7 @@ GOTEST=$(GOCMD) test
 GOMOD=$(GOCMD) mod
 
 # Build flags
-LDFLAGS=-ldflags "-s -w -X github.com/yejune/go-envir/cmd.Version=$(VERSION)"
+LDFLAGS=-ldflags "-s -w -X github.com/yejune/gorelay/cmd.Version=$(VERSION)"
 
 .PHONY: all build build-cross clean test deps install uninstall darwin linux help
 
@@ -69,7 +69,7 @@ uninstall:
 
 # Show help
 help:
-	@echo "Go Envir - SSH deployment tool"
+	@echo "Gorelay - SSH deployment tool"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make deps      - Download dependencies"

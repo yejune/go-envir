@@ -1,4 +1,4 @@
-module github.com/yejune/go-envir
+module github.com/yejune/gorelay
 
 go 1.25.4
 

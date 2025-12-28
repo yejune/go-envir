@@ -1,7 +1,7 @@
 # Build artifacts
 build/
 dist/
-envir
+gorelay
 
 # IDE
 .idea/
@@ -12,5 +12,6 @@ envir
 .DS_Store
 
 # Test files
-Envirfile.yaml
-envir.log
+Gorelayfile.yaml
+gorelay.log
+.history/

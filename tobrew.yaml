@@ -1,0 +1,20 @@
+name: gorelay
+language: go
+description: Description of your project
+homepage: https://github.com/yejune/gorelay
+license: MIT
+github:
+    user: yejune
+    repo: gorelay
+    tap_repo: homebrew-tap
+build:
+    command: go build -o build/{{.Name}} .
+formula:
+    install: |-
+        system "go", "build", "."
+        bin.install "gorelay"
+    test: assert_match "gorelay", shell_output("#{bin}/gorelay --version")
+    caveats: |-
+        gorelay has been installed!
+
+        Run 'gorelay --help' to get started.

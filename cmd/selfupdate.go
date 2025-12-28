@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	githubAPI   = "https://api.github.com/repos/yejune/go-envir/releases/latest"
-	downloadURL = "https://github.com/yejune/go-envir/releases/download/%s/envir-%s-%s"
+	githubAPI   = "https://api.github.com/repos/yejune/gorelay/releases/latest"
+	downloadURL = "https://github.com/yejune/gorelay/releases/download/%s/gorelay-%s-%s"
 )
 
 func SelfUpdate() error {
@@ -57,7 +57,7 @@ func SelfUpdate() error {
 	fmt.Printf("📦 Downloading %s...\n", latestVersion)
 
 	// Download binary
-	tmpFile := filepath.Join(os.TempDir(), "envir-new")
+	tmpFile := filepath.Join(os.TempDir(), "gorelay-new")
 	if err := downloadFile(tmpFile, downloadPath); err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
@@ -101,7 +101,7 @@ func SelfUpdate() error {
 
 	fmt.Println()
 	fmt.Println("✅ Update complete!")
-	fmt.Printf("envir has been updated to %s\n", latestVersion)
+	fmt.Printf("gorelay has been updated to %s\n", latestVersion)
 
 	return nil
 }
