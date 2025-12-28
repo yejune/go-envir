@@ -1,8 +1,8 @@
 class Gorelay < Formula
   desc "Description of your project"
   homepage "https://github.com/yejune/gorelay"
-  url "https://github.com/yejune/gorelay/archive/refs/tags/v0.0.1.tar.gz"
-  sha256 "b6c7c20428e451df1148627c67b5baeb3fc137c353ca63aa6ac169b56a80aab5"
+  url "https://github.com/yejune/gorelay/archive/refs/tags/v0.0.2.tar.gz"
+  sha256 "7be0b992a098c86dac808b1c58f6132a8d325867f28e8ece182c17b0b63c5f09"
   license "MIT"
   head "https://github.com/yejune/gorelay.git", branch: "main"
 
