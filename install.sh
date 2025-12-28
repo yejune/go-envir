@@ -38,6 +38,7 @@ echo "📦 Downloading $BINARY $LATEST for $OS/$ARCH..."
 
 # Download
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST/$BINARY-$OS-$ARCH"
+echo "DOWNLOAD_URL: $DOWNLOAD_URL"
 TMP_FILE=$(mktemp)
 
 if ! curl -sL "$DOWNLOAD_URL" -o "$TMP_FILE"; then
